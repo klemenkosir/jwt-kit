@@ -10,11 +10,13 @@ public final class JWTSigners {
         case jwk(JWKSigner)
     }
     private var storage: [JWKIdentifier: Signer]
+	private var signers: [Signer]
     private var `default`: Signer?
 
     /// Create a new `JWTSigners`.
     public init() {
         self.storage = [:]
+		self.signers = []
     }
 
     /// Adds a new signer.
@@ -25,7 +27,10 @@ public final class JWTSigners {
     ) {
         if let kid = kid {
             self.storage[kid] = .jwt(signer)
-        }
+		} else {
+			self.signers.append(.jwt(signer))
+		}
+		
         switch (self.default, isDefault) {
         case (.none, .none), (_, .some(true)):
             self.default = .jwt(signer)
@@ -61,13 +66,28 @@ public final class JWTSigners {
         default: break
         }
     }
+	
+	/// Removes all the signers
+	public func reset() {
+		self.storage = [:]
+		self.signers = []
+		self.`default` = nil
+	}
 
-    /// Gets a signer for the supplied `kid`, if one exists.
-    public func get(kid: JWKIdentifier? = nil, alg: String? = nil) -> JWTSigner? {
-        let signer: Signer
-        if let kid = kid, let stored = self.storage[kid] {
-            signer = stored
-        } else if let d = self.default {
+    /// Gets a signer for the supplied `kid`or `alg`, if one exists.
+	public func get(kid: JWKIdentifier? = nil, alg: String? = nil) -> JWTSigner? {
+		let signer: Signer
+		if let kid = kid, let stored = self.storage[kid] {
+			signer = stored
+		} else if let match = signers.first(where: { signer in
+			if case .jwt(let signer) = signer,
+			   signer.algorithm.name == alg {
+				return true
+			}
+			return false
+		}) {
+			signer = match
+		} else if let d = self.default {
             signer = d
         } else {
             return nil
